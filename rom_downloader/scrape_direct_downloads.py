@@ -71,8 +71,11 @@ def main():
         t.start()
         workers.append(t)
 
+    counter = 0
     for url in c.fetchall():
-        WORK_QUEUE.put(url[1])
+        if counter < 200:  # Hack solution to kill the script after 100 entries
+            WORK_QUEUE.put(url[1])
+            counter += 1
 
     WORK_QUEUE.join()
 

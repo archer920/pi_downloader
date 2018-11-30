@@ -88,6 +88,13 @@ def main():
         print('Failed to find direct download for {}'.format(f))
 
     rom_db.close()
+    reboot()
+
+
+def reboot():
+    print('Restarting...')
+    import subprocess, os
+    subprocess.call(['python3', os.path.join(os.path.sep, os.getcwd(), 'scrape_direct_downloads.py')])
 
 
 if __name__ == '__main__':

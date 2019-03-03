@@ -1,18 +1,17 @@
+from datetime import datetime
 from queue import Queue
 from threading import Thread, Lock
 
 from rom_downloader.rom_db import RomDB
 from rom_downloader.rom_driver import RomDriver
 
-NUM_WORKERS = 8
+NUM_WORKERS = 2
 WORK_QUEUE = Queue()
 LOCK = Lock()
 FAILS = []
 
 
 def worker() -> None:
-    rom_driver = RomDriver()
-
     try:
         while True:
             url = WORK_QUEUE.get()
@@ -21,39 +20,43 @@ def worker() -> None:
                 break
 
             try:
-                scrape_direct_download(url, rom_driver)
-            except Exception:
-                LOCK.acquire()
+                scrape_direct_download(url)
+            except Exception as e:
+                LOCK.acquire(timeout=500)
+                print(datetime.now().time(), e)
                 FAILS.append(url)
                 LOCK.release()
             finally:
+
                 WORK_QUEUE.task_done()
-    except Exception:
+    except Exception as e:
+        print(datetime.now().time(), e)
         pass
-    finally:
-        rom_driver.close()
 
 
-def scrape_direct_download(url: str, rom_driver: RomDriver):
+def scrape_direct_download(url: str):
+    rom_driver = RomDriver()
     rom_db = RomDB()
 
     try:
-        rom_db.open('rp_roms.db')
-
         rom_driver.navigate_to(url)
         rom_driver.click_element('#download_link')
-
         dd_link = rom_driver.href_by_link_text('click here')
-        rom_driver.go_back()
 
-        LOCK.acquire()
-
-        rom_db.add_direct_download(url, dd_link)
-        print('Recorded {} for {}'.format(dd_link, url))
-
-        LOCK.release()
+        try:
+            LOCK.acquire(timeout=2000)
+            rom_db.open('rp_roms.db')
+            rom_db.add_direct_download(url, dd_link)
+            print(datetime.now().time(), 'Recorded {} for {}'.format(dd_link, url))
+        except Exception as e:
+            print(datetime.now().time(), e)
+        finally:
+            rom_db.close()
+            LOCK.release()
+    except Exception as e:
+        print(datetime.now().time(), e)
     finally:
-        rom_db.close()
+        rom_driver.close()
 
 
 def main():
@@ -71,11 +74,8 @@ def main():
         t.start()
         workers.append(t)
 
-    counter = 0
     for url in c.fetchall():
-        if counter < 200:  # Hack solution to kill the script after 100 entries
-            WORK_QUEUE.put(url[1])
-            counter += 1
+        WORK_QUEUE.put(url[1])
 
     WORK_QUEUE.join()
 
@@ -85,10 +85,9 @@ def main():
         t.join()
 
     for f in FAILS:
-        print('Failed to find direct download for {}'.format(f))
+        print(datetime.now().time(), 'Failed to find direct download for {}'.format(f))
 
     rom_db.close()
-    reboot()
 
 
 def reboot():
